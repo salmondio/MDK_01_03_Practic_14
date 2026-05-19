@@ -8,19 +8,143 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.example.practic_14.Classes.SendCommon;
+import com.example.practic_14.ICallbackResponse;
 import com.example.practic_14.R;
+import com.example.practic_14.Classes.MyTimerTask;
+
+import android.content.Context;
+import android.graphics.drawable.Drawable;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.Log;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.TextView;
+import android.widget.Toast;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import java.util.ArrayList;
+import java.util.Timer;
 
 public class Verification extends AppCompatActivity {
+    public ArrayList<EditText> BthNumbers = new ArrayList<>(); // список кнопок на слое
+    public TextView tvText, tvSendMail; // Текстовое поле таймера, и кнопки отправить код
+    public Integer SelectNumber = 0; // Переменная для переключения выбранного поля
+    public String Code; // Код полученный от сервера
+    public SendCommon SendCommon; // объект выполняющие запрос к серверу
+    public MyTimerTask TimerTask; // объект таймера
+    public Context Context; // ссылка на контекст активности
+    public Timer Timer = new Timer(); // таймер, выполняющие отсчёт
+    public EditText tbUserEmail; // Текстовое поле с почтой пользователя
+    public Drawable BackgroundRed, Background; // Ресурсы фона текстового поля
 
-    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_verification);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
+        Context = this; // Запоминаем контекст активности
+
+        tvText = findViewById(R.id.timer); // Получаем поле таймера на слое
+        tvSendMail = findViewById(R.id.send_mail); // Получаем поле кнопки отправить на слое
+        tbUserEmail = findViewById(R.id.user_email); // Получаем поле почты на слое
+
+        BthNumbers.add(findViewById(R.id.number1)); // получаем кнопку №1
+        BthNumbers.add(findViewById(R.id.number2)); // получаем кнопку №2
+        BthNumbers.add(findViewById(R.id.number3)); // получаем кнопку №3
+        BthNumbers.add(findViewById(R.id.number4)); // получаем кнопку №4
+        BthNumbers.add(findViewById(R.id.number5)); // получаем кнопку №5
+        BthNumbers.add(findViewById(R.id.number6)); // получаем кнопку №6
+
+        for (EditText BthNumber : BthNumbers) // перебираем кнопки
+            BthNumber.addTextChangedListener(TextChangedListener); // Назначаем событие на ввод текста
+
+        TimerTask = new MyTimerTask(this, tvText, tvSendMail); // Создаём объект таймера, и передаём активность и два поля
+        Timer.schedule(TimerTask, 0, 1000); // Запускаем таймер, с периодом в 1 секунду
+
+        SendCommon = new SendCommon(tbUserEmail, CallbackResponseCode, CallbackResponseError); // Инициализируем объект запроса
+
+        Bundle arguments = getIntent().getExtras(); // получаем данные, переданные на активность
+        Code = arguments.get("Code").toString(); // получаем код
+        tbUserEmail.setText(arguments.get("Email").toString()); // в поле почты, указываем почту
+
+        // Получаем ресурсы фона для текстового поля
+        BackgroundRed = ContextCompat.getDrawable(this, R.drawable.edittext_background_red);
+        Background = ContextCompat.getDrawable(this, R.drawable.edittext_background);
+    }
+
+    TextWatcher TextChangedListener = new TextWatcher() {
+        @Override
+        public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {}
+
+        @Override
+        public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {}
+
+        @Override
+        public void afterTextChanged(Editable editable) {
+            if (editable.length() > 0) { // если количество введёных символов больше 0
+                if (SelectNumber == BthNumbers.size() - 1) { // Если не последний символ
+                    Log.d("Test", "MAX"); // Выводим уведомление о том что достигнуто максимальное количество
+                } else {
+                    SelectNumber++; // Увеличиваем счётчик
+                    BthNumbers.get(SelectNumber).requestFocus(); // Переключаем фокус на следующее поле
+                    CheckCode(); // проверяем введёный код
+                }
+            }
+        }
+    };
+
+    public void CheckCode() {
+        String UserCode = ""; // введёный код
+        for (EditText BthNumber : BthNumbers) // Перебираем кнопки
+            UserCode += String.valueOf(BthNumber.getText()); // добавляем введёный пользователем символ в введёный код
+
+        if (UserCode.equals(Code)) { // Проверяем, если код соответствует
+            for (EditText BthNumber : BthNumbers) // перебираем кнопки
+                BthNumber.setBackground(Background); // меняем цвет, без выделения красным
+
+            AlertDialog.Builder AlertDialogBuilder = new AlertDialog.Builder(this); // Создаём уведомление
+            AlertDialogBuilder.setTitle("Авторизация"); // Указываем заголовок
+            AlertDialogBuilder.setMessage("Успешное подтворждение ОТР кода"); // Указываем сообщение
+            AlertDialog AlertDialog = AlertDialogBuilder.create(); // Создаём диалог
+            AlertDialog.show(); // отображаем пользователю
+        } else if (UserCode.length() == 6) { // если код не совпадает, и длина кода 6 символов
+            for (EditText BthNumber : BthNumbers) // Перебираем кнопки
+                BthNumber.setBackground(BackgroundRed); // меняем цвет, с красным выделением
+        }
+    }
+
+    public void SendCode(View view) {
+        TimerTask = new MyTimerTask(this, tvText, tvSendMail); // Создаём объект таймера, и передаём активность и два поля
+        Timer.schedule(TimerTask, 0, 1000); // Запускаем таймер, с периодом в 1 секунду
+
+        tvText.setVisibility(View.VISIBLE); // показываем текст с секундами
+        tvSendMail.setVisibility(View.GONE); // скрываем текст с кнопкой отправить
+
+        if (SendCommon.getStatus() != AsyncTask.Status.RUNNING) // Если процесс запроса на сервер не запущен
+            SendCommon.execute(); // Запускаем процесс запроса
+    }
+
+    ICallbackResponse CallbackResponseError = new ICallbackResponse() {
+        @Override
+        public void returner(String Response) {
+            Toast.makeText(Context, "Ошибка сервера", Toast.LENGTH_SHORT).show(); // Выводим сообщение об ошибке
+            SendCommon = new SendCommon(tbUserEmail, CallbackResponseCode, CallbackResponseError); // Инициализируем объект запроса заново
+        }
+    };
+
+    ICallbackResponse CallbackResponseCode = new ICallbackResponse() {
+        @Override
+        public void returner(String Response) {
+            Toast.makeText(Context, "Код успешно отправлен", Toast.LENGTH_SHORT).show(); // отображаем сообщение
+            Code = Response; // Запоминаем код
+        }
+    };
+
+    public void OnBack(View view) {
+        finish(); // закрытие активности
     }
 }
